@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CrossBorder AI Studio - Complete</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        :root {
+            --sidebar-width: 80px;
+            --sidebar-collapsed-width: 50px;
+            --right-panel-width: 320px;
+            --bg-dark: #000000;
+            --bg-panel: #1c1c1e;
+            --border-color: #38383a;
+            --accent: #0A84FF;
+            --accent-glow: rgba(10, 132, 255, 0.3);
+            --text-main: #ffffff;
+            --text-sub: #86868b;
+            --radius-m: 12px;
+        }
+
+        body {
+            margin: 0; background-color: var(--bg-dark); color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Roboto, sans-serif;
+            display: flex; height: 100vh; overflow: hidden;
+        }
+
+        /* === 1. 左侧导航 (可折叠) === */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: rgba(28, 28, 30, 0.9); backdrop-filter: blur(20px);
+            border-right: 1px solid var(--border-color);
+            display: flex; flex-direction: column; align-items: center; padding-top: 20px;
+            z-index: 100; transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow: hidden; flex-shrink: 0;
+        }
+        .sidebar.collapsed { width: var(--sidebar-collapsed-width); }
+
+        .toggle-btn {
+            width: 100%; height: 40px; display: flex; align-items: center; justify-content: center;
+            color: var(--text-sub); cursor: pointer; margin-bottom: 20px;
+        }
+        .toggle-btn:hover { color: white; }
+
+        .nav-item {
+            width: 54px; height: 54px; border-radius: var(--radius-m);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            margin-bottom: 24px; cursor: pointer; transition: all 0.2s;
+            color: var(--text-sub); flex-shrink: 0;
+        }
+        .nav-item:hover { background: rgba(255,255,255,0.1); color: #fff; }
+        .nav-item.active { background: var(--accent); color: white; box-shadow: 0 4px 12px var(--accent-glow); }
+        
+        .nav-icon { font-size: 20px; margin-bottom: 4px; }
+        .nav-label { font-size: 9px; font-weight: 500; transition: opacity 0.2s; }
+        .sidebar.collapsed .nav-label { opacity: 0; display: none; }
+        .sidebar.collapsed .nav-item { width: 36px; height: 36px; margin-bottom: 15px; }
+        .sidebar.collapsed .nav-icon { margin-bottom: 0; font-size: 16px; }
+
+        /* === 2. 主内容区 === */
+        .main-content {
+            flex: 1; position: relative; display: flex; overflow: hidden;
+        }
+
+        .mode-container {
+            width: 100%; height: 100%; display: none; position: absolute; top: 0; left: 0;
+        }
+        .mode-container.active { display: block; }
+
+        /* --- Mode A: 3D 影棚样式 --- */
+        #canvas-container { width: 100%; height: 100%; background: radial-gradient(circle at center, #2c2c2e 0%, #000 100%); }
+
+        .upload-float-panel {
+            position: absolute; top: 20px; left: 20px;
+            background: rgba(28, 28, 30, 0.9); backdrop-filter: blur(20px);
+            padding: 16px; border-radius: var(--radius-m); border: 1px solid var(--border-color);
+            width: 220px; box-shadow: 0 10px 40px rgba(0,0,0,0.4); z-index: 50;
+        }
+
+        .shape-selector {
+            display: flex; background: rgba(0,0,0,0.3); padding: 3px; border-radius: 8px; margin-bottom: 15px;
+        }
+        .shape-option {
+            flex: 1; text-align: center; font-size: 12px; padding: 6px 0; border-radius: 6px;
+            cursor: pointer; color: var(--text-sub); transition: all 0.2s;
+        }
+        .shape-option.active { background: #636366; color: white; font-weight: 600; }
+
+        .upload-btn-ui {
+            background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+            color: white; padding: 10px; border-radius: 8px; cursor: pointer;
+            text-align: center; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .upload-btn-ui:hover { background: rgba(255,255,255,0.2); }
+
+        /* --- Mode B: 智能剪辑样式 (恢复) --- */
+        .editor-workspace {
+            padding: 40px; display: flex; flex-direction: column; height: 100%; box-sizing: border-box;
+            background: linear-gradient(to bottom, #1c1c1e, #000); overflow-y: auto;
+        }
+        .timeline-area {
+            display: flex; gap: 15px; overflow-x: auto; padding: 20px 0; min-height: 180px; align-items: center;
+        }
+        .clip-card {
+            width: 120px; height: 160px; background: #333; border-radius: 8px; position: relative;
+            flex-shrink: 0; border: 2px solid transparent; overflow: hidden; transition: transform 0.2s; cursor: grab;
+        }
+        .clip-card:hover { transform: translateY(-5px); border-color: var(--accent); }
+        .clip-add-btn {
+            width: 120px; height: 160px; border: 2px dashed #444; border-radius: 8px;
+            display: flex; align-items: center; justify-content: center; color: #666; cursor: pointer; flex-shrink: 0;
+        }
+        .clip-add-btn:hover { border-color: var(--accent); color: var(--accent); }
+        .clip-number {
+            position: absolute; top: 5px; left: 5px; background: rgba(0,0,0,0.6);
+            padding: 2px 6px; border-radius: 4px; font-size: 10px; color: white;
+        }
+
+        /* --- Mode C: AI 生成样式 (恢复) --- */
+        .gen-workspace {
+            padding: 40px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100%; box-sizing: border-box; background: #121212;
+        }
+        .gen-card {
+            width: 100%; max-width: 600px; background: var(--bg-panel); border: 1px solid var(--border-color);
+            border-radius: 18px; padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        }
+        .sub-tabs {
+            display: flex; background: #2c2c2e; padding: 4px; border-radius: 10px; margin-bottom: 20px;
+        }
+        .sub-tab {
+            flex: 1; text-align: center; padding: 10px; border-radius: 8px; font-size: 13px;
+            cursor: pointer; color: var(--text-sub); transition: all 0.2s;
+        }
+        .sub-tab.active { background: #636366; color: white; font-weight: 600; }
+        
+        .drop-zone {
+            border: 2px dashed #48484a; border-radius: 12px; height: 120px;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            color: var(--text-sub); cursor: pointer; margin-bottom: 20px; background: rgba(255,255,255,0.02);
+        }
+        .drop-zone:hover { border-color: var(--accent); background: rgba(10, 132, 255, 0.05); }
+
+        textarea {
+            width: 100%; background: #2c2c2e; border: 1px solid transparent; color: white;
+            padding: 15px; border-radius: 12px; font-family: inherit; resize: none;
+            box-sizing: border-box; font-size: 14px; margin-bottom: 20px;
+        }
+        textarea:focus { outline: none; border-color: var(--accent); }
+
+        /* === 3. 右侧属性面板 (可折叠) === */
+        .properties-panel {
+            width: var(--right-panel-width); background: var(--bg-panel); border-left: 1px solid var(--border-color);
+            padding: 24px; display: flex; flex-direction: column; gap: 20px; z-index: 90;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); position: relative; flex-shrink: 0; white-space: nowrap;
+        }
+        .properties-panel.collapsed { width: 0; padding: 0; border-left: none; overflow: hidden; }
+
+        .panel-header-row {
+            display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 1px solid var(--border-color); padding-bottom: 15px; margin-bottom: 5px;
+        }
+        .panel-title { font-size: 12px; text-transform: uppercase; font-weight: 600; color: var(--text-sub); letter-spacing: 1px;}
+        .close-panel-btn { cursor: pointer; color: var(--text-sub); padding: 5px; border-radius: 4px; }
+        .close-panel-btn:hover { background: rgba(255,255,255,0.1); color: white; }
+
+        .expand-right-btn {
+            position: absolute; right: 0; top: 50%; transform: translateY(-50%);
+            width: 24px; height: 60px; background: var(--bg-panel); border: 1px solid var(--border-color);
+            border-right: none; border-radius: 8px 0 0 8px; display: none; align-items: center; justify-content: center;
+            cursor: pointer; color: var(--text-sub); z-index: 80; box-shadow: -5px 0 20px rgba(0,0,0,0.3);
+        }
+        .expand-right-btn:hover { color: var(--accent); }
+        .expand-right-btn.visible { display: flex; }
+
+        .control-group { display: flex; flex-direction: column; gap: 8px; }
+        .control-label { font-size: 13px; color: var(--text-sub); }
+        select, input[type="text"], input[type="password"] {
+            background: #2c2c2e; border: 1px solid transparent; color: white;
+            padding: 10px 12px; border-radius: 8px; outline: none; font-size: 13px; width: 100%; box-sizing: border-box;
+        }
+        select:focus, input:focus { border-color: var(--accent); }
+
+        .btn-primary {
+            background: var(--accent); color: white; border: none; padding: 14px;
+            border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer;
+            width: 100%; margin-top: auto; display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .btn-primary:hover { background: #0071e3; }
+
+    </style>
+</head>
+<body>
+
+    <div class="sidebar" id="leftSidebar">
+        <div class="toggle-btn" onclick="toggleLeftSidebar()"><i class="fas fa-bars"></i></div>
+        <div class="nav-item active" onclick="switchMode('3d')" id="nav-3d">
+            <i class="fas fa-cube nav-icon"></i><span class="nav-label">3D影棚</span>
+        </div>
+        <div class="nav-item" onclick="switchMode('editor')" id="nav-editor">
+            <i class="fas fa-film nav-icon"></i><span class="nav-label">智能剪辑</span>
+        </div>
+        <div class="nav-item" onclick="switchMode('gen')" id="nav-gen">
+            <i class="fas fa-wand-magic-sparkles nav-icon"></i><span class="nav-label">AI生成</span>
+        </div>
+    </div>
+
+    <div class="main-content">
+        
+        <div id="mode-3d" class="mode-container active">
+            <div id="canvas-container"></div>
+            
+            <div class="upload-float-panel">
+                <div class="panel-header-row" style="border:none; padding-bottom:5px;">
+                    <span style="font-size:12px; color:#fff;">模型与贴图</span>
+                </div>
+                <div class="shape-selector">
+                    <div class="shape-option active" onclick="switchShape('box', this)">立方体</div>
+                    <div class="shape-option" onclick="switchShape('cylinder', this)">圆柱体</div>
+                </div>
+                <div class="upload-btn-ui" onclick="document.getElementById('textureInput').click()">
+                    <i class="fas fa-cloud-upload-alt"></i><span>上传包装图</span>
+                </div>
+                <input type="file" id="textureInput" hidden accept="image/*">
+            </div>
+        </div>
+
+        <div id="mode-editor" class="mode-container">
+            <div class="editor-workspace">
+                <h1 style="font-size: 24px; margin-bottom: 5px;">Smart Timeline</h1>
+                <p style="color: var(--text-sub); margin-bottom: 20px;">拖入素材，AI 自动卡点与特效处理。</p>
+                
+                <div class="timeline-area" id="timeline">
+                    <div class="clip-card">
+                        <div class="clip-number">1</div>
+                        <img src="https://via.placeholder.com/120x160/333/666?text=Intro" style="width:100%; height:100%; object-fit:cover;">
+                    </div>
+                    <div class="clip-card">
+                        <div class="clip-number">2</div>
+                        <img src="https://via.placeholder.com/120x160/333/666?text=Product" style="width:100%; height:100%; object-fit:cover;">
+                    </div>
+                    <div class="clip-add-btn" onclick="addClip()">
+                        <i class="fas fa-plus"></i>
+                    </div>
+                </div>
+
+                <div style="flex:1; border: 1px dashed #333; border-radius: 12px; margin-top:20px; display:flex; align-items:center; justify-content:center; color:#444; background: rgba(255,255,255,0.02);">
+                    <i class="fas fa-play-circle" style="font-size: 48px;"></i>
+                </div>
+            </div>
+        </div>
+
+        <div id="mode-gen" class="mode-container">
+            <div class="gen-workspace">
+                <div class="gen-card">
+                    <div class="sub-tabs">
+                        <div class="sub-tab active" onclick="switchGenSubMode('text')" id="tab-text">文生视频 (T2V)</div>
+                        <div class="sub-tab" onclick="switchGenSubMode('image')" id="tab-image">图生视频 (I2V)</div>
+                    </div>
+
+                    <div id="i2v-upload-area" class="drop-zone" style="display:none;" onclick="document.getElementById('refImageInput').click()">
+                        <i class="fas fa-cloud-upload-alt" style="font-size: 24px; margin-bottom: 10px;"></i>
+                        <span style="font-size:13px;">点击或拖拽上传参考图</span>
+                        <input type="file" id="refImageInput" hidden accept="image/*">
+                        <img id="refImagePreview" style="display:none; height: 100%; width: 100%; object-fit: contain; border-radius: 8px;">
+                    </div>
+
+                    <label class="control-label" style="margin-bottom:8px; display:block;">创意提示词</label>
+                    <textarea id="genPrompt" rows="4" placeholder="描述你想要的画面，例如：一只巨大的猫在充满霓虹灯的赛博朋克城市中行走，电影质感，4k..."></textarea>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+
+    <div class="expand-right-btn" id="expandRightBtn" onclick="toggleRightPanel()">
+        <i class="fas fa-chevron-left"></i>
+    </div>
+
+    <div class="properties-panel" id="rightPanel">
+        <div class="panel-header-row">
+            <span class="panel-title">生成引擎设置</span>
+            <div class="close-panel-btn" onclick="toggleRightPanel()"><i class="fas fa-chevron-right"></i></div>
+        </div>
+        <div class="control-group">
+            <label class="control-label">模型引擎</label>
+            <select id="modelEngine">
+                <option value="luma">Luma Dream Machine</option>
+                <option value="kling">Kling AI (可灵)</option>
+                <option value="runway">Runway Gen-3</option>
+                <option value="sora">Sora 2.0</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label class="control-label">API Key</label>
+            <input type="password" placeholder="sk-...">
+        </div>
+        <div class="control-group">
+            <label class="control-label">画幅比例</label>
+            <select>
+                <option>16:9</option>
+                <option>9:16 (TikTok)</option>
+                <option>1:1</option>
+            </select>
+        </div>
+        <div style="flex:1;"></div>
+        <button class="btn-primary" onclick="alert('任务已提交到后端引擎！')">
+            <i class="fas fa-play"></i> 开始生成
+        </button>
+    </div>
+
+    <script>
+        // === 全局变量 ===
+        let scene, camera, renderer, textureMesh, controls;
+        let activeTexture = null;
+        let currentMode = '3d';
+        let genSubMode = 'text';
+
+        // === 1. 界面折叠与切换 ===
+        function toggleLeftSidebar() {
+            document.getElementById('leftSidebar').classList.toggle('collapsed');
+            setTimeout(resizeCanvas, 300);
+        }
+        function toggleRightPanel() {
+            const panel = document.getElementById('rightPanel');
+            const expandBtn = document.getElementById('expandRightBtn');
+            const isCollapsed = panel.classList.toggle('collapsed');
+            if (isCollapsed) expandBtn.classList.add('visible');
+            else expandBtn.classList.remove('visible');
+            setTimeout(resizeCanvas, 300);
+        }
+        function resizeCanvas() {
+            if (currentMode === '3d' && renderer && camera) {
+                const container = document.getElementById('canvas-container');
+                const width = container.clientWidth;
+                const height = container.clientHeight;
+                camera.aspect = width / height;
+                camera.updateProjectionMatrix();
+                renderer.setSize(width, height);
+            }
+        }
+        function switchMode(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            document.getElementById('nav-' + mode).classList.add('active');
+            
+            document.querySelectorAll('.mode-container').forEach(el => el.style.display = 'none');
+            // Editor 和 Gen 使用 flex 布局，3d 使用 block
+            const target = document.getElementById('mode-' + mode);
+            target.style.display = (mode === 'editor' || mode === 'gen') ? 'block' : 'block'; 
+            
+            // 修正 display 导致的 flex 失效问题
+            if(mode === 'gen') document.querySelector('.gen-workspace').style.display = 'flex';
+            if(mode === 'editor') document.querySelector('.editor-workspace').style.display = 'flex';
+
+            if (mode === '3d') setTimeout(resizeCanvas, 50);
+        }
+
+        // === 2. 智能剪辑逻辑 (恢复) ===
+        function addClip() {
+            const timeline = document.getElementById('timeline');
+            const btn = timeline.querySelector('.clip-add-btn');
+            const count = timeline.querySelectorAll('.clip-card').length + 1;
+            const newClip = document.createElement('div');
+            newClip.className = 'clip-card';
+            newClip.innerHTML = `<div class="clip-number">${count}</div><img src="https://via.placeholder.com/120x160/444/888?text=Clip+${count}" style="width:100%;height:100%;object-fit:cover;">`;
+            timeline.insertBefore(newClip, btn);
+        }
+
+        // === 3. AI 生成逻辑 (恢复) ===
+        function switchGenSubMode(subMode) {
+            genSubMode = subMode;
+            document.querySelectorAll('.sub-tab').forEach(el => el.classList.remove('active'));
+            document.getElementById('tab-' + subMode).classList.add('active');
+            const uploadArea = document.getElementById('i2v-upload-area');
+            const prompt = document.getElementById('genPrompt');
+            if (subMode === 'image') {
+                uploadArea.style.display = 'flex';
+                prompt.placeholder = "描述如何让这张图片动起来...";
+            } else {
+                uploadArea.style.display = 'none';
+                prompt.placeholder = "描述你想要的画面，例如：赛博朋克城市...";
+            }
+        }
+        document.getElementById('refImageInput').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if(file) {
+                document.getElementById('refImagePreview').src = URL.createObjectURL(file);
+                document.getElementById('refImagePreview').style.display = 'block';
+                e.target.parentElement.querySelector('i').style.display = 'none';
+            }
+        });
+
+        // === 4. Three.js 核心逻辑 ===
+        function initThreeJS() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            const grid = new THREE.GridHelper(20, 20, 0x444444, 0x222222);
+            scene.add(grid);
+            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.set(3, 2, 5);
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+            
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+            dirLight.position.set(5, 5, 5);
+            scene.add(dirLight);
+
+            createGeometry('box');
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true; controls.autoRotate = true; controls.autoRotateSpeed = 1.5;
+            
+            function animate() {
+                requestAnimationFrame(animate);
+                controls.update();
+                renderer.render(scene, camera);
+            }
+            animate();
+            window.addEventListener('resize', resizeCanvas);
+        }
+
+        function createGeometry(type) {
+            if (textureMesh) scene.remove(textureMesh);
+            let geometry = (type === 'box') ? new THREE.BoxGeometry(1.5, 2, 1.5) : new THREE.CylinderGeometry(0.8, 0.8, 2, 64);
+            const material = new THREE.MeshStandardMaterial({ 
+                color: 0xffffff, map: activeTexture, roughness: 0.3, metalness: 0.1
+            });
+            textureMesh = new THREE.Mesh(geometry, material);
+            textureMesh.position.y = 1.01;
+            scene.add(textureMesh);
+        }
+
+        function switchShape(type, btn) {
+            document.querySelectorAll('.shape-option').forEach(el => el.classList.remove('active'));
+            btn.classList.add('active');
+            createGeometry(type);
+        }
+
+        document.getElementById('textureInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                new THREE.TextureLoader().load(event.target.result, function(texture) {
+                    activeTexture = texture;
+                    texture.encoding = THREE.sRGBEncoding;
+                    if (textureMesh) {
+                        textureMesh.material.map = texture;
+                        textureMesh.material.needsUpdate = true;
+                        textureMesh.material.color.set(0xffffff);
+                    }
+                    alert("✅ 贴图已应用！");
+                });
+            };
+            reader.readAsDataURL(file);
+        });
+
+        initThreeJS();
+    </script>
+</body>
+</html>
