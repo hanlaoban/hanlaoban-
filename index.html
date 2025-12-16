@@ -1,0 +1,1538 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CrossBorder AI Studio - Complete</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        :root {
+            --sidebar-width: 80px;
+            --sidebar-collapsed-width: 50px;
+            --right-panel-width: 320px;
+            --bg-dark: #000000;
+            --bg-panel: #1c1c1e;
+            --border-color: #38383a;
+            --accent: #0A84FF;
+            --accent-glow: rgba(10, 132, 255, 0.3);
+            --text-main: #ffffff;
+            --text-sub: #86868b;
+            --radius-m: 12px;
+        }
+
+        body {
+            margin: 0; background-color: var(--bg-dark); color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Roboto, sans-serif;
+            display: flex; height: 100vh; overflow: hidden;
+        }
+
+        /* === 1. 左侧导航 (可折叠) === */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: rgba(28, 28, 30, 0.9); backdrop-filter: blur(20px);
+            border-right: 1px solid var(--border-color);
+            display: flex; flex-direction: column; align-items: center; padding-top: 20px;
+            z-index: 100; transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow: hidden; flex-shrink: 0;
+        }
+        .sidebar.collapsed { width: var(--sidebar-collapsed-width); }
+
+        .toggle-btn {
+            width: 100%; height: 40px; display: flex; align-items: center; justify-content: center;
+            color: var(--text-sub); cursor: pointer; margin-bottom: 20px;
+        }
+        .toggle-btn:hover { color: white; }
+
+        .nav-item {
+            width: 54px; height: 54px; border-radius: var(--radius-m);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            margin-bottom: 24px; cursor: pointer; transition: all 0.2s;
+            color: var(--text-sub); flex-shrink: 0;
+        }
+        .nav-item:hover { background: rgba(255,255,255,0.1); color: #fff; }
+        .nav-item.active { background: var(--accent); color: white; box-shadow: 0 4px 12px var(--accent-glow); }
+        
+        .nav-icon { font-size: 20px; margin-bottom: 4px; }
+        .nav-label { font-size: 9px; font-weight: 500; transition: opacity 0.2s; }
+        .sidebar.collapsed .nav-label { opacity: 0; display: none; }
+        .sidebar.collapsed .nav-item { width: 36px; height: 36px; margin-bottom: 15px; }
+        .sidebar.collapsed .nav-icon { margin-bottom: 0; font-size: 16px; }
+
+        /* === 2. 主内容区 === */
+        .main-content {
+            flex: 1; position: relative; display: flex; overflow: hidden;
+        }
+
+        .mode-container {
+            width: 100%; height: 100%; display: none; position: absolute; top: 0; left: 0;
+        }
+        .mode-container.active { display: block; }
+
+        /* --- Mode A: 3D 影棚样式 --- */
+        #canvas-container { width: 100%; height: 100%; background: radial-gradient(circle at center, #2c2c2e 0%, #000 100%); }
+
+        .upload-float-panel {
+            position: absolute; top: 20px; left: 20px;
+            background: rgba(28, 28, 30, 0.9); backdrop-filter: blur(20px);
+            padding: 16px; border-radius: var(--radius-m); border: 1px solid var(--border-color);
+            width: 220px; box-shadow: 0 10px 40px rgba(0,0,0,0.4); z-index: 50;
+        }
+
+        .shape-selector {
+            display: flex; background: rgba(0,0,0,0.3); padding: 3px; border-radius: 8px; margin-bottom: 15px;
+        }
+        .shape-option {
+            flex: 1; text-align: center; font-size: 12px; padding: 6px 0; border-radius: 6px;
+            cursor: pointer; color: var(--text-sub); transition: all 0.2s;
+        }
+        .shape-option.active { background: #636366; color: white; font-weight: 600; }
+
+        .upload-btn-ui {
+            background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+            color: white; padding: 10px; border-radius: 8px; cursor: pointer;
+            text-align: center; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .upload-btn-ui:hover { background: rgba(255,255,255,0.2); }
+
+        /* --- Mode B: 智能剪辑样式 (增强版) --- */
+        .editor-workspace {
+            display: flex; flex-direction: column; height: 100%; box-sizing: border-box;
+            background: linear-gradient(to bottom, #1c1c1e, #000); overflow: hidden;
+        }
+        
+        /* 编辑器顶部工具栏 */
+        .editor-toolbar {
+            padding: 15px 20px; background: rgba(28, 28, 30, 0.95); border-bottom: 1px solid var(--border-color);
+            display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+        }
+        .toolbar-btn {
+            padding: 8px 16px; background: rgba(255,255,255,0.1); border: 1px solid transparent;
+            border-radius: 8px; color: white; cursor: pointer; font-size: 13px; display: flex;
+            align-items: center; gap: 6px; transition: all 0.2s;
+        }
+        .toolbar-btn:hover { background: rgba(255,255,255,0.2); border-color: var(--accent); }
+        .toolbar-btn.active { background: var(--accent); }
+        .toolbar-separator { width: 1px; height: 24px; background: var(--border-color); margin: 0 8px; }
+        
+        /* 视频预览区 */
+        .preview-container {
+            flex: 1; display: flex; align-items: center; justify-content: center;
+            background: #000; position: relative; min-height: 0;
+        }
+        .video-preview {
+            max-width: 100%; max-height: 100%; background: #000;
+            border-radius: 8px; box-shadow: 0 0 40px rgba(0,0,0,0.8);
+        }
+        .preview-controls {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.8); backdrop-filter: blur(10px); padding: 12px 20px;
+            border-radius: 30px; display: flex; align-items: center; gap: 15px;
+        }
+        .play-btn {
+            width: 40px; height: 40px; border-radius: 50%; background: var(--accent);
+            border: none; color: white; cursor: pointer; display: flex;
+            align-items: center; justify-content: center; font-size: 16px;
+        }
+        .time-display { color: white; font-size: 13px; font-variant-numeric: tabular-nums; }
+        .progress-bar {
+            width: 300px; height: 4px; background: rgba(255,255,255,0.2); border-radius: 2px;
+            cursor: pointer; position: relative;
+        }
+        .progress-fill {
+            height: 100%; background: var(--accent); border-radius: 2px; width: 0%;
+            transition: width 0.1s;
+        }
+        
+        /* 时间轴区域 */
+        .timeline-section {
+            height: 300px; background: var(--bg-panel); border-top: 1px solid var(--border-color);
+            display: flex; flex-direction: column; flex-shrink: 0;
+        }
+        .timeline-header {
+            padding: 10px 20px; border-bottom: 1px solid var(--border-color);
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .timeline-tabs {
+            display: flex; gap: 8px;
+        }
+        .timeline-tab {
+            padding: 6px 12px; background: rgba(255,255,255,0.05); border-radius: 6px;
+            font-size: 12px; color: var(--text-sub); cursor: pointer; transition: all 0.2s;
+        }
+        .timeline-tab.active { background: var(--accent); color: white; }
+        .zoom-controls {
+            display: flex; align-items: center; gap: 8px;
+        }
+        .zoom-btn {
+            width: 28px; height: 28px; background: rgba(255,255,255,0.1); border: none;
+            border-radius: 6px; color: white; cursor: pointer; display: flex;
+            align-items: center; justify-content: center; font-size: 12px;
+        }
+        .zoom-btn:hover { background: rgba(255,255,255,0.2); }
+        
+        /* 时间轴轨道 */
+        .timeline-content {
+            flex: 1; overflow-x: auto; overflow-y: auto; position: relative;
+        }
+        .timeline-ruler {
+            height: 30px; background: #2c2c2e; border-bottom: 1px solid var(--border-color);
+            position: sticky; top: 0; z-index: 10;
+        }
+        .timeline-track {
+            min-height: 80px; border-bottom: 1px solid var(--border-color);
+            position: relative; background: #1c1c1e;
+        }
+        .track-label {
+            position: sticky; left: 0; width: 120px; height: 100%; background: #2c2c2e;
+            border-right: 1px solid var(--border-color); display: flex;
+            align-items: center; padding: 0 12px; font-size: 12px; color: var(--text-sub);
+            z-index: 5;
+        }
+        .track-content {
+            position: absolute; left: 120px; right: 0; height: 100%;
+        }
+        .video-clip {
+            position: absolute; height: 70px; background: linear-gradient(135deg, #0A84FF, #0071e3);
+            border-radius: 4px; border: 2px solid rgba(255,255,255,0.3);
+            cursor: move; display: flex; align-items: center; padding: 0 8px;
+            font-size: 11px; color: white; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            min-width: 60px;
+        }
+        .video-clip.selected { border-color: #fff; box-shadow: 0 0 0 2px var(--accent); }
+        .audio-clip {
+            position: absolute; height: 50px; background: linear-gradient(135deg, #FF6B6B, #EE5A6F);
+            border-radius: 4px; border: 2px solid rgba(255,255,255,0.3);
+            cursor: move; min-width: 40px;
+        }
+        .subtitle-clip {
+            position: absolute; height: 40px; background: linear-gradient(135deg, #4ECDC4, #44A08D);
+            border-radius: 4px; border: 2px solid rgba(255,255,255,0.3);
+            cursor: move; display: flex; align-items: center; padding: 0 8px;
+            font-size: 11px; color: white; min-width: 50px;
+        }
+        .transition-clip {
+            position: absolute; height: 100%; background: rgba(255,255,255,0.2);
+            border-left: 2px solid #FFD700; border-right: 2px solid #FFD700;
+            cursor: col-resize; width: 20px; z-index: 3;
+        }
+        
+        /* 時間軸標尺樣式 */
+        .timeline-ruler {
+            position: relative;
+        }
+        
+        /* 片段拖動樣式 */
+        .video-clip.dragging {
+            opacity: 0.7;
+            z-index: 100;
+        }
+        
+        /* 工具提示 */
+        .tooltip {
+            position: absolute; background: rgba(0,0,0,0.9); color: white;
+            padding: 6px 10px; border-radius: 6px; font-size: 11px;
+            pointer-events: none; z-index: 1000; white-space: nowrap;
+        }
+        
+        /* 響應式優化 */
+        @media (max-width: 1200px) {
+            .effects-panel {
+                width: 240px;
+            }
+            .history-panel {
+                width: 280px;
+            }
+        }
+        
+        /* 特效面板 */
+        .effects-panel {
+            position: absolute; top: 20px; right: 20px; width: 280px;
+            background: rgba(28, 28, 30, 0.95); backdrop-filter: blur(20px);
+            border: 1px solid var(--border-color); border-radius: 12px; padding: 16px;
+            display: none; z-index: 100;
+        }
+        .effects-panel.active { display: block; }
+        .effect-item {
+            padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px;
+            margin-bottom: 8px; cursor: pointer; transition: all 0.2s;
+        }
+        .effect-item:hover { background: rgba(255,255,255,0.1); }
+
+        /* --- Mode C: AI 生成样式 (增强版) --- */
+        .gen-workspace {
+            padding: 40px; display: flex; gap: 30px; height: 100%; box-sizing: border-box;
+            background: #121212; overflow-y: auto;
+        }
+        .gen-main {
+            flex: 1; max-width: 700px;
+        }
+        .gen-card {
+            background: var(--bg-panel); border: 1px solid var(--border-color);
+            border-radius: 18px; padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+        }
+        .sub-tabs {
+            display: flex; background: #2c2c2e; padding: 4px; border-radius: 10px; margin-bottom: 20px;
+        }
+        .sub-tab {
+            flex: 1; text-align: center; padding: 10px; border-radius: 8px; font-size: 13px;
+            cursor: pointer; color: var(--text-sub); transition: all 0.2s;
+        }
+        .sub-tab.active { background: #636366; color: white; font-weight: 600; }
+        
+        .drop-zone {
+            border: 2px dashed #48484a; border-radius: 12px; height: 200px;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            color: var(--text-sub); cursor: pointer; margin-bottom: 20px; background: rgba(255,255,255,0.02);
+            position: relative; overflow: hidden;
+        }
+        .drop-zone:hover { border-color: var(--accent); background: rgba(10, 132, 255, 0.05); }
+        .drop-zone img {
+            max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px;
+        }
+
+        textarea {
+            width: 100%; background: #2c2c2e; border: 1px solid transparent; color: white;
+            padding: 15px; border-radius: 12px; font-family: inherit; resize: none;
+            box-sizing: border-box; font-size: 14px; margin-bottom: 20px;
+        }
+        textarea:focus { outline: none; border-color: var(--accent); }
+        
+        /* 生成进度 */
+        .progress-container {
+            margin: 20px 0; display: none;
+        }
+        .progress-container.active { display: block; }
+        .progress-bar-full {
+            width: 100%; height: 8px; background: rgba(255,255,255,0.1);
+            border-radius: 4px; overflow: hidden; margin-bottom: 10px;
+        }
+        .progress-bar-fill {
+            height: 100%; background: linear-gradient(90deg, var(--accent), #0071e3);
+            border-radius: 4px; width: 0%; transition: width 0.3s;
+            position: relative; overflow: hidden;
+        }
+        .progress-bar-fill::after {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            animation: shimmer 2s infinite;
+        }
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        .progress-text {
+            font-size: 12px; color: var(--text-sub); text-align: center;
+        }
+        
+        /* 历史记录 */
+        .history-panel {
+            width: 320px; background: var(--bg-panel); border: 1px solid var(--border-color);
+            border-radius: 18px; padding: 20px; height: fit-content; position: sticky; top: 40px;
+        }
+        .history-item {
+            padding: 12px; background: rgba(255,255,255,0.05); border-radius: 8px;
+            margin-bottom: 10px; cursor: pointer; transition: all 0.2s;
+        }
+        .history-item:hover { background: rgba(255,255,255,0.1); }
+        .history-thumb {
+            width: 100%; aspect-ratio: 16/9; background: #2c2c2e; border-radius: 6px;
+            margin-bottom: 8px; overflow: hidden;
+        }
+        .history-thumb img { width: 100%; height: 100%; object-fit: cover; }
+        .history-info {
+            font-size: 11px; color: var(--text-sub);
+        }
+
+        /* === 3. 右侧属性面板 (可折叠) === */
+        .properties-panel {
+            width: var(--right-panel-width); background: var(--bg-panel); border-left: 1px solid var(--border-color);
+            padding: 24px; display: flex; flex-direction: column; gap: 20px; z-index: 90;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); position: relative; flex-shrink: 0; white-space: nowrap;
+        }
+        .properties-panel.collapsed { width: 0; padding: 0; border-left: none; overflow: hidden; }
+
+        .panel-header-row {
+            display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 1px solid var(--border-color); padding-bottom: 15px; margin-bottom: 5px;
+        }
+        .panel-title { font-size: 12px; text-transform: uppercase; font-weight: 600; color: var(--text-sub); letter-spacing: 1px;}
+        .close-panel-btn { cursor: pointer; color: var(--text-sub); padding: 5px; border-radius: 4px; }
+        .close-panel-btn:hover { background: rgba(255,255,255,0.1); color: white; }
+
+        .expand-right-btn {
+            position: absolute; right: 0; top: 50%; transform: translateY(-50%);
+            width: 24px; height: 60px; background: var(--bg-panel); border: 1px solid var(--border-color);
+            border-right: none; border-radius: 8px 0 0 8px; display: none; align-items: center; justify-content: center;
+            cursor: pointer; color: var(--text-sub); z-index: 80; box-shadow: -5px 0 20px rgba(0,0,0,0.3);
+        }
+        .expand-right-btn:hover { color: var(--accent); }
+        .expand-right-btn.visible { display: flex; }
+
+        .control-group { display: flex; flex-direction: column; gap: 8px; }
+        .control-label { font-size: 13px; color: var(--text-sub); }
+        select, input[type="text"], input[type="password"] {
+            background: #2c2c2e; border: 1px solid transparent; color: white;
+            padding: 10px 12px; border-radius: 8px; outline: none; font-size: 13px; width: 100%; box-sizing: border-box;
+        }
+        select:focus, input:focus { border-color: var(--accent); }
+
+        .btn-primary {
+            background: var(--accent); color: white; border: none; padding: 14px;
+            border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer;
+            width: 100%; margin-top: auto; display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .btn-primary:hover { background: #0071e3; }
+
+    </style>
+</head>
+<body>
+
+    <div class="sidebar" id="leftSidebar">
+        <div class="toggle-btn" onclick="toggleLeftSidebar()"><i class="fas fa-bars"></i></div>
+        <div class="nav-item active" onclick="switchMode('3d')" id="nav-3d">
+            <i class="fas fa-cube nav-icon"></i><span class="nav-label">3D影棚</span>
+        </div>
+        <div class="nav-item" onclick="switchMode('editor')" id="nav-editor">
+            <i class="fas fa-film nav-icon"></i><span class="nav-label">智能剪辑</span>
+        </div>
+        <div class="nav-item" onclick="switchMode('gen')" id="nav-gen">
+            <i class="fas fa-wand-magic-sparkles nav-icon"></i><span class="nav-label">AI生成</span>
+        </div>
+    </div>
+
+    <div class="main-content">
+        
+        <div id="mode-3d" class="mode-container active">
+            <div id="canvas-container"></div>
+            
+            <div class="upload-float-panel">
+                <div class="panel-header-row" style="border:none; padding-bottom:5px;">
+                    <span style="font-size:12px; color:#fff;">模型与贴图</span>
+                </div>
+                <div class="shape-selector">
+                    <div class="shape-option active" onclick="switchShape('box', this)">立方体</div>
+                    <div class="shape-option" onclick="switchShape('cylinder', this)">圆柱体</div>
+                    <div class="shape-option" onclick="switchShape('custom', this)">自定义模型</div>
+                </div>
+                <div class="upload-btn-ui" onclick="document.getElementById('textureInput').click()">
+                    <i class="fas fa-cloud-upload-alt"></i><span>上传包装图</span>
+                </div>
+                <input type="file" id="textureInput" hidden accept="image/*">
+                <div class="upload-btn-ui" style="margin-top:10px;" onclick="document.getElementById('modelInput').click()">
+                    <i class="fas fa-cube"></i><span>上传自定义模型 (.glb/.gltf)</span>
+                </div>
+                <input type="file" id="modelInput" hidden accept=".glb,.gltf">
+            </div>
+        </div>
+
+        <div id="mode-editor" class="mode-container">
+            <div class="editor-workspace">
+                <!-- 工具栏 -->
+                <div class="editor-toolbar">
+                    <div class="toolbar-btn" onclick="importMedia()">
+                        <i class="fas fa-folder-open"></i> 导入素材
+                    </div>
+                    <div class="toolbar-btn" onclick="toggleEffectsPanel()">
+                        <i class="fas fa-magic"></i> 特效
+                    </div>
+                    <div class="toolbar-btn" onclick="addSubtitle()">
+                        <i class="fas fa-closed-captioning"></i> 字幕
+                    </div>
+                    <div class="toolbar-btn" onclick="showTransitions()">
+                        <i class="fas fa-exchange-alt"></i> 转场
+                    </div>
+                    <div class="toolbar-separator"></div>
+                    <div class="toolbar-btn" onclick="splitClip()">
+                        <i class="fas fa-cut"></i> 分割
+                    </div>
+                    <div class="toolbar-btn" onclick="deleteClip()">
+                        <i class="fas fa-trash"></i> 删除
+                    </div>
+                    <div class="toolbar-separator"></div>
+                    <div class="toolbar-btn" onclick="exportVideo()">
+                        <i class="fas fa-download"></i> 导出
+                    </div>
+                </div>
+
+                <!-- 预览区 -->
+                <div class="preview-container" 
+                     ondrop="handleVideoDrop(event)" 
+                     ondragover="handleDragOver(event)" 
+                     ondragleave="handleDragLeave(event)">
+                    <video class="video-preview" id="previewVideo" controls style="display:none;"></video>
+                    <canvas class="video-preview" id="previewCanvas" style="display:none;"></canvas>
+                    <div id="previewPlaceholder" style="color: #666; text-align: center;">
+                        <i class="fas fa-video" style="font-size: 64px; margin-bottom: 20px; display: block;"></i>
+                        <p>导入视频素材开始编辑</p>
+                        <p style="font-size: 12px; color: #444; margin-top: 10px;">或直接拖拽视频文件到这里</p>
+                    </div>
+                    <div class="preview-controls" id="previewControls" style="display:none;">
+                        <button class="play-btn" onclick="togglePlay()" id="playBtn">
+                            <i class="fas fa-play"></i>
+                        </button>
+                        <span class="time-display" id="timeDisplay">00:00 / 00:00</span>
+                        <div class="progress-bar" onclick="seekVideo(event)" id="progressBar">
+                            <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    </div>
+                </div>
+
+                <!-- 时间轴 -->
+                <div class="timeline-section">
+                    <div class="timeline-header">
+                        <div class="timeline-tabs">
+                            <div class="timeline-tab active" onclick="switchTimelineTab('video', this)">视频</div>
+                            <div class="timeline-tab" onclick="switchTimelineTab('audio', this)">音频</div>
+                            <div class="timeline-tab" onclick="switchTimelineTab('subtitle', this)">字幕</div>
+                        </div>
+                        <div class="zoom-controls">
+                            <button class="zoom-btn" onclick="zoomTimeline(-1)"><i class="fas fa-minus"></i></button>
+                            <span style="font-size: 11px; color: var(--text-sub); margin: 0 8px;">缩放</span>
+                            <button class="zoom-btn" onclick="zoomTimeline(1)"><i class="fas fa-plus"></i></button>
+                        </div>
+                    </div>
+                    <div class="timeline-content" id="timelineContent">
+                        <div class="timeline-ruler" id="timelineRuler"></div>
+                        <!-- 视频轨道 -->
+                        <div class="timeline-track" id="videoTrack">
+                            <div class="track-label">
+                                <i class="fas fa-video" style="margin-right: 8px;"></i>视频轨道 1
+                            </div>
+                            <div class="track-content" id="videoTrackContent"></div>
+                        </div>
+                        <!-- 音频轨道 -->
+                        <div class="timeline-track" id="audioTrack" style="display:none;">
+                            <div class="track-label">
+                                <i class="fas fa-music" style="margin-right: 8px;"></i>音频轨道 1
+                            </div>
+                            <div class="track-content" id="audioTrackContent"></div>
+                        </div>
+                        <!-- 字幕轨道 -->
+                        <div class="timeline-track" id="subtitleTrack" style="display:none;">
+                            <div class="track-label">
+                                <i class="fas fa-closed-captioning" style="margin-right: 8px;"></i>字幕轨道 1
+                            </div>
+                            <div class="track-content" id="subtitleTrackContent"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 特效面板 -->
+                <div class="effects-panel" id="effectsPanel">
+                    <div style="font-size: 14px; font-weight: 600; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+                        <span>特效库</span>
+                        <i class="fas fa-times" style="cursor: pointer; color: var(--text-sub);" onclick="toggleEffectsPanel()"></i>
+                    </div>
+                    <div class="effect-item" onclick="applyEffect('fade')">
+                        <i class="fas fa-adjust" style="margin-right: 8px;"></i>淡入淡出
+                    </div>
+                    <div class="effect-item" onclick="applyEffect('zoom')">
+                        <i class="fas fa-search-plus" style="margin-right: 8px;"></i>缩放
+                    </div>
+                    <div class="effect-item" onclick="applyEffect('blur')">
+                        <i class="fas fa-eye-slash" style="margin-right: 8px;"></i>模糊
+                    </div>
+                    <div class="effect-item" onclick="applyEffect('vintage')">
+                        <i class="fas fa-camera-retro" style="margin-right: 8px;"></i>复古滤镜
+                    </div>
+                    <div class="effect-item" onclick="applyEffect('glitch')">
+                        <i class="fas fa-bolt" style="margin-right: 8px;"></i>故障特效
+                    </div>
+                    <div class="effect-item" onclick="applyEffect('color')">
+                        <i class="fas fa-palette" style="margin-right: 8px;"></i>色彩调整
+                    </div>
+                </div>
+
+                <!-- 转场面板 -->
+                <div class="effects-panel" id="transitionsPanel" style="display:none;">
+                    <div style="font-size: 14px; font-weight: 600; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+                        <span>转场效果</span>
+                        <i class="fas fa-times" style="cursor: pointer; color: var(--text-sub);" onclick="showTransitions()"></i>
+                    </div>
+                    <div class="effect-item" onclick="applyTransition('fade')">
+                        <i class="fas fa-circle-notch" style="margin-right: 8px;"></i>淡入淡出
+                    </div>
+                    <div class="effect-item" onclick="applyTransition('slide')">
+                        <i class="fas fa-arrows-alt-h" style="margin-right: 8px;"></i>滑动
+                    </div>
+                    <div class="effect-item" onclick="applyTransition('zoom')">
+                        <i class="fas fa-expand" style="margin-right: 8px;"></i>缩放
+                    </div>
+                    <div class="effect-item" onclick="applyTransition('wipe')">
+                        <i class="fas fa-broom" style="margin-right: 8px;"></i>擦除
+                    </div>
+                    <div class="effect-item" onclick="applyTransition('spin')">
+                        <i class="fas fa-sync" style="margin-right: 8px;"></i>旋转
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="mode-gen" class="mode-container">
+            <div class="gen-workspace">
+                <div class="gen-main">
+                <div class="gen-card">
+                    <div class="sub-tabs">
+                        <div class="sub-tab active" onclick="switchGenSubMode('text')" id="tab-text">文生视频 (T2V)</div>
+                        <div class="sub-tab" onclick="switchGenSubMode('image')" id="tab-image">图生视频 (I2V)</div>
+                    </div>
+
+                        <div id="i2v-upload-area" class="drop-zone" style="display:none;" 
+                             onclick="document.getElementById('refImageInput').click()"
+                             ondrop="handleDrop(event)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">
+                            <i class="fas fa-cloud-upload-alt" style="font-size: 32px; margin-bottom: 10px; color: var(--accent);"></i>
+                            <span style="font-size:14px;">点击或拖拽上传参考图</span>
+                        <input type="file" id="refImageInput" hidden accept="image/*">
+                            <img id="refImagePreview" style="display:none; max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px;">
+                    </div>
+
+                    <label class="control-label" style="margin-bottom:8px; display:block;">创意提示词</label>
+                        <textarea id="genPrompt" rows="5" placeholder="描述你想要的画面，例如：一只巨大的猫在充满霓虹灯的赛博朋克城市中行走，电影质感，4k，慢动作..."></textarea>
+                        
+                        <div class="control-group" style="margin-bottom: 15px;">
+                            <label class="control-label">负面提示词（可选）</label>
+                            <textarea rows="2" id="negativePrompt" placeholder="不想要的元素，例如：模糊、低质量、变形..."></textarea>
+                </div>
+
+                        <!-- 生成进度 -->
+                        <div class="progress-container" id="progressContainer">
+                            <div class="progress-bar-full">
+                                <div class="progress-bar-fill" id="progressBarFill"></div>
+            </div>
+                            <div class="progress-text" id="progressText">准备中...</div>
+                        </div>
+
+                        <!-- 生成结果预览 -->
+                        <div id="generatedPreview" style="display:none; margin-top: 20px;">
+                            <div style="font-size: 14px; font-weight: 600; margin-bottom: 10px;">生成结果</div>
+                            <video id="generatedVideo" controls style="width: 100%; border-radius: 8px; background: #000;"></video>
+                            <div style="display: flex; gap: 10px; margin-top: 15px;">
+                                <button class="btn-primary" onclick="downloadGenerated()" style="flex: 1; margin: 0;">
+                                    <i class="fas fa-download"></i> 下载视频
+                                </button>
+                                <button class="toolbar-btn" onclick="importToEditor()" style="flex: 1; margin: 0;">
+                                    <i class="fas fa-arrow-right"></i> 导入编辑器
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 历史记录面板 -->
+                <div class="history-panel">
+                    <div style="font-size: 14px; font-weight: 600; margin-bottom: 15px;">
+                        <i class="fas fa-history" style="margin-right: 8px;"></i>生成历史
+                    </div>
+                    <div id="historyList">
+                        <div class="history-item" onclick="loadHistory(1)">
+                            <div class="history-thumb">
+                                <img src="https://via.placeholder.com/320x180/0A84FF/fff?text=Video+1" alt="历史记录">
+                            </div>
+                            <div class="history-info">
+                                <div style="color: white; margin-bottom: 4px;">赛博朋克城市</div>
+                                <div>2024-01-15 14:30</div>
+                            </div>
+                        </div>
+                        <div class="history-item" onclick="loadHistory(2)">
+                            <div class="history-thumb">
+                                <img src="https://via.placeholder.com/320x180/FF6B6B/fff?text=Video+2" alt="历史记录">
+                            </div>
+                            <div class="history-info">
+                                <div style="color: white; margin-bottom: 4px;">产品展示</div>
+                                <div>2024-01-15 12:15</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+
+    <div class="expand-right-btn" id="expandRightBtn" onclick="toggleRightPanel()">
+        <i class="fas fa-chevron-left"></i>
+    </div>
+
+    <div class="properties-panel" id="rightPanel">
+        <!-- AI生成模式面板 -->
+        <div id="genPanel">
+        <div class="panel-header-row">
+            <span class="panel-title">生成引擎设置</span>
+            <div class="close-panel-btn" onclick="toggleRightPanel()"><i class="fas fa-chevron-right"></i></div>
+        </div>
+        <div class="control-group">
+            <label class="control-label">模型引擎</label>
+            <select id="modelEngine">
+                <option value="luma">Luma Dream Machine</option>
+                <option value="kling">Kling AI (可灵)</option>
+                <option value="runway">Runway Gen-3</option>
+                <option value="sora">Sora 2.0</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label class="control-label">API Key</label>
+                <input type="password" id="apiKey" placeholder="sk-...">
+        </div>
+        <div class="control-group">
+            <label class="control-label">画幅比例</label>
+                <select id="aspectRatio">
+                    <option value="16:9">16:9</option>
+                    <option value="9:16">9:16 (TikTok)</option>
+                    <option value="1:1">1:1</option>
+                    <option value="4:3">4:3</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label class="control-label">视频时长</label>
+                <select id="videoDuration">
+                    <option value="5">5秒</option>
+                    <option value="10" selected>10秒</option>
+                    <option value="15">15秒</option>
+                    <option value="30">30秒</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label class="control-label">运动强度</label>
+                <select id="motionStrength">
+                    <option value="low">低</option>
+                    <option value="medium" selected>中</option>
+                    <option value="high">高</option>
+            </select>
+        </div>
+        <div style="flex:1;"></div>
+            <button class="btn-primary" onclick="startGeneration()">
+            <i class="fas fa-play"></i> 开始生成
+        </button>
+        </div>
+
+        <!-- 编辑器模式面板 -->
+        <div id="editorPanel" style="display:none;">
+            <div class="panel-header-row">
+                <span class="panel-title">片段属性</span>
+                <div class="close-panel-btn" onclick="toggleRightPanel()"><i class="fas fa-chevron-right"></i></div>
+            </div>
+            <div id="clipProperties" style="color: var(--text-sub); text-align: center; padding: 40px 20px;">
+                选择一个片段查看属性
+            </div>
+            <div class="control-group" id="clipControls" style="display:none;">
+                <label class="control-label">播放速度</label>
+                <select id="playbackSpeed">
+                    <option value="0.25">0.25x</option>
+                    <option value="0.5">0.5x</option>
+                    <option value="0.75">0.75x</option>
+                    <option value="1" selected>1x (正常)</option>
+                    <option value="1.25">1.25x</option>
+                    <option value="1.5">1.5x</option>
+                    <option value="2">2x</option>
+                </select>
+            </div>
+            <div class="control-group" id="volumeControls" style="display:none;">
+                <label class="control-label">音量</label>
+                <input type="range" id="volumeSlider" min="0" max="100" value="100" style="width: 100%;">
+                <div style="font-size: 11px; color: var(--text-sub); text-align: center; margin-top: 5px;">
+                    <span id="volumeValue">100%</span>
+                </div>
+            </div>
+            <div class="control-group" id="fadeControls" style="display:none;">
+                <label class="control-label">淡入淡出</label>
+                <div style="display: flex; gap: 10px;">
+                    <input type="number" id="fadeIn" placeholder="淡入(秒)" min="0" max="10" step="0.1" style="flex: 1;">
+                    <input type="number" id="fadeOut" placeholder="淡出(秒)" min="0" max="10" step="0.1" style="flex: 1;">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // === 全局变量 ===
+        let scene, camera, renderer, textureMesh, controls;
+        let activeTexture = null;
+        let currentMode = '3d';
+        let genSubMode = 'text';
+        let currentShape = 'box';
+        let gltfLoader = null;
+        
+        // 视频编辑器变量
+        let videoClips = [];
+        let audioClips = [];
+        let subtitleClips = [];
+        let currentTime = 0;
+        let isPlaying = false;
+        let timelineZoom = 1;
+        let selectedClip = null;
+        let currentTimelineTab = 'video';
+        
+        // AI生成变量
+        let generationHistory = [];
+        let currentGeneration = null;
+
+        // === 1. 界面折叠与切换 ===
+        function toggleLeftSidebar() {
+            document.getElementById('leftSidebar').classList.toggle('collapsed');
+            setTimeout(resizeCanvas, 300);
+        }
+        function toggleRightPanel() {
+            const panel = document.getElementById('rightPanel');
+            const expandBtn = document.getElementById('expandRightBtn');
+            const isCollapsed = panel.classList.toggle('collapsed');
+            if (isCollapsed) expandBtn.classList.add('visible');
+            else expandBtn.classList.remove('visible');
+            setTimeout(resizeCanvas, 300);
+        }
+        function resizeCanvas() {
+            if (currentMode === '3d' && renderer && camera) {
+                const container = document.getElementById('canvas-container');
+                const width = container.clientWidth;
+                const height = container.clientHeight;
+                camera.aspect = width / height;
+                camera.updateProjectionMatrix();
+                renderer.setSize(width, height);
+            }
+        }
+        function switchMode(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            document.getElementById('nav-' + mode).classList.add('active');
+            
+            document.querySelectorAll('.mode-container').forEach(el => el.style.display = 'none');
+            // Editor 和 Gen 使用 flex 布局，3d 使用 block
+            const target = document.getElementById('mode-' + mode);
+            target.style.display = (mode === 'editor' || mode === 'gen') ? 'block' : 'block'; 
+            
+            // 修正 display 导致的 flex 失效问题
+            if(mode === 'gen') document.querySelector('.gen-workspace').style.display = 'flex';
+            if(mode === 'editor') document.querySelector('.editor-workspace').style.display = 'flex';
+
+            if (mode === '3d') setTimeout(resizeCanvas, 50);
+            if (mode === 'editor') {
+                initEditor();
+                document.getElementById('genPanel').style.display = 'none';
+                document.getElementById('editorPanel').style.display = 'block';
+            }
+            if (mode === 'gen') {
+                document.getElementById('genPanel').style.display = 'block';
+                document.getElementById('editorPanel').style.display = 'none';
+            }
+        }
+
+        function initEditor() {
+            // 初始化時間軸標尺
+            renderTimelineRuler();
+            // 設置視頻預覽事件
+            const preview = document.getElementById('previewVideo');
+            if (preview) {
+                preview.addEventListener('timeupdate', updateTimeDisplay);
+                preview.addEventListener('loadedmetadata', () => {
+                    document.getElementById('previewControls').style.display = 'flex';
+                    updateTimeDisplay();
+                });
+            }
+        }
+
+        function renderTimelineRuler() {
+            const ruler = document.getElementById('timelineRuler');
+            if (!ruler) return;
+            ruler.innerHTML = '';
+            const totalDuration = Math.max(getTotalDuration(), 30);
+            const step = timelineZoom < 1 ? 5 : timelineZoom < 2 ? 1 : 0.5;
+            const pixelsPerSecond = timelineZoom * 10;
+            
+            for (let i = 0; i <= totalDuration; i += step) {
+                const marker = document.createElement('div');
+                marker.style.position = 'absolute';
+                marker.style.left = (i * pixelsPerSecond) + 'px';
+                marker.style.height = '100%';
+                marker.style.width = '1px';
+                marker.style.background = i % (step * 5) === 0 ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.2)';
+                
+                if (i % (step * 5) === 0) {
+                    const label = document.createElement('div');
+                    label.textContent = formatTime(i);
+                    label.style.position = 'absolute';
+                    label.style.left = (i * pixelsPerSecond + 4) + 'px';
+                    label.style.top = '6px';
+                    label.style.fontSize = '10px';
+                    label.style.color = 'rgba(255,255,255,0.7)';
+                    ruler.appendChild(label);
+                }
+                ruler.appendChild(marker);
+            }
+        }
+
+        // === 2. 视频编辑器逻辑 ===
+        function importMedia() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'video/*,audio/*';
+            input.multiple = true;
+            input.onchange = (e) => {
+                Array.from(e.target.files).forEach(file => {
+                    if (file.type.startsWith('video/')) {
+                        addVideoClip(file);
+                    } else if (file.type.startsWith('audio/')) {
+                        addAudioClip(file);
+                    }
+                });
+            };
+            input.click();
+        }
+
+        function addVideoClip(file) {
+            const url = URL.createObjectURL(file);
+            const clip = {
+                id: Date.now(),
+                file: file,
+                url: url,
+                startTime: getTotalDuration(),
+                duration: 0,
+                element: null
+            };
+            
+            // 创建视频元素获取时长
+            const video = document.createElement('video');
+            video.src = url;
+            video.onloadedmetadata = () => {
+                clip.duration = video.duration;
+                renderVideoClip(clip);
+                videoClips.push(clip);
+                
+                // 如果是第一个视频，设置为预览
+                if (videoClips.length === 1) {
+                    const preview = document.getElementById('previewVideo');
+                    const placeholder = document.getElementById('previewPlaceholder');
+                    preview.src = url;
+                    preview.style.display = 'block';
+                    placeholder.style.display = 'none';
+                }
+                
+                renderTimelineRuler();
+            };
+        }
+
+        function addAudioClip(file) {
+            const url = URL.createObjectURL(file);
+            const clip = {
+                id: Date.now(),
+                file: file,
+                url: url,
+                startTime: getTotalDuration(),
+                duration: 0,
+                element: null
+            };
+            
+            const audio = new Audio(url);
+            audio.onloadedmetadata = () => {
+                clip.duration = audio.duration;
+                renderAudioClip(clip);
+                audioClips.push(clip);
+            };
+        }
+
+        function renderVideoClip(clip) {
+            const trackContent = document.getElementById('videoTrackContent');
+            const clipEl = document.createElement('div');
+            clipEl.className = 'video-clip';
+            clipEl.style.left = (clip.startTime * timelineZoom * 10) + 'px';
+            clipEl.style.width = (clip.duration * timelineZoom * 10) + 'px';
+            clipEl.innerHTML = `<i class="fas fa-video" style="margin-right: 4px;"></i>${clip.file.name.substring(0, 15)}`;
+            clipEl.onclick = (e) => {
+                e.stopPropagation();
+                selectClip(clip, clipEl);
+            };
+            clip.element = clipEl;
+            trackContent.appendChild(clipEl);
+        }
+
+        function renderAudioClip(clip) {
+            const trackContent = document.getElementById('audioTrackContent');
+            const clipEl = document.createElement('div');
+            clipEl.className = 'audio-clip';
+            clipEl.style.left = (clip.startTime * timelineZoom * 10) + 'px';
+            clipEl.style.width = (clip.duration * timelineZoom * 10) + 'px';
+            clipEl.onclick = (e) => {
+                e.stopPropagation();
+                selectClip(clip, clipEl);
+            };
+            clip.element = clipEl;
+            trackContent.appendChild(clipEl);
+        }
+
+        function selectClip(clip, element) {
+            document.querySelectorAll('.video-clip, .audio-clip, .subtitle-clip').forEach(el => {
+                el.classList.remove('selected');
+            });
+            element.classList.add('selected');
+            selectedClip = clip;
+            updateClipProperties();
+        }
+
+        function updateClipProperties() {
+            if (!selectedClip) return;
+            const properties = document.getElementById('clipProperties');
+            const controls = document.getElementById('clipControls');
+            const volumeControls = document.getElementById('volumeControls');
+            const fadeControls = document.getElementById('fadeControls');
+            
+            if (selectedClip.element && selectedClip.element.classList.contains('video-clip')) {
+                properties.innerHTML = `
+                    <div style="margin-bottom: 15px;">
+                        <i class="fas fa-video" style="font-size: 24px; color: var(--accent);"></i>
+                    </div>
+                    <div style="font-size: 13px; margin-bottom: 5px;">${selectedClip.file ? selectedClip.file.name : '视频片段'}</div>
+                    <div style="font-size: 11px; color: var(--text-sub);">时长: ${formatTime(selectedClip.duration)}</div>
+                `;
+                controls.style.display = 'flex';
+                fadeControls.style.display = 'flex';
+                volumeControls.style.display = 'none';
+            } else if (selectedClip.element && selectedClip.element.classList.contains('audio-clip')) {
+                properties.innerHTML = `
+                    <div style="margin-bottom: 15px;">
+                        <i class="fas fa-music" style="font-size: 24px; color: #FF6B6B;"></i>
+                    </div>
+                    <div style="font-size: 13px; margin-bottom: 5px;">${selectedClip.file ? selectedClip.file.name : '音频片段'}</div>
+                    <div style="font-size: 11px; color: var(--text-sub);">时长: ${formatTime(selectedClip.duration)}</div>
+                `;
+                controls.style.display = 'none';
+                fadeControls.style.display = 'flex';
+                volumeControls.style.display = 'flex';
+            } else {
+                properties.innerHTML = `
+                    <div style="margin-bottom: 15px;">
+                        <i class="fas fa-closed-captioning" style="font-size: 24px; color: #4ECDC4;"></i>
+                    </div>
+                    <div style="font-size: 13px; margin-bottom: 5px;">${selectedClip.text || '字幕'}</div>
+                `;
+                controls.style.display = 'none';
+                volumeControls.style.display = 'none';
+                fadeControls.style.display = 'none';
+            }
+        }
+
+        function getTotalDuration() {
+            let max = 0;
+            videoClips.forEach(clip => {
+                max = Math.max(max, clip.startTime + clip.duration);
+            });
+            audioClips.forEach(clip => {
+                max = Math.max(max, clip.startTime + clip.duration);
+            });
+            return max;
+        }
+
+        function togglePlay() {
+            const preview = document.getElementById('previewVideo');
+            if (isPlaying) {
+                preview.pause();
+                document.getElementById('playBtn').innerHTML = '<i class="fas fa-play"></i>';
+            } else {
+                preview.play();
+                document.getElementById('playBtn').innerHTML = '<i class="fas fa-pause"></i>';
+            }
+            isPlaying = !isPlaying;
+        }
+
+        function seekVideo(e) {
+            const bar = e.currentTarget;
+            const rect = bar.getBoundingClientRect();
+            const percent = (e.clientX - rect.left) / rect.width;
+            const preview = document.getElementById('previewVideo');
+            if (preview.duration) {
+                preview.currentTime = percent * preview.duration;
+                updateTimeDisplay();
+            }
+        }
+
+        function updateTimeDisplay() {
+            const preview = document.getElementById('previewVideo');
+            if (!preview.duration) return;
+            const current = formatTime(preview.currentTime);
+            const total = formatTime(preview.duration);
+            document.getElementById('timeDisplay').textContent = `${current} / ${total}`;
+            const percent = (preview.currentTime / preview.duration) * 100;
+            document.getElementById('progressFill').style.width = percent + '%';
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        }
+
+        function splitClip() {
+            if (!selectedClip) {
+                alert('请先选择一个片段');
+                return;
+            }
+            // 分割逻辑
+            alert('分割功能：在当前位置分割片段');
+        }
+
+        function deleteClip() {
+            if (!selectedClip) return;
+            if (confirm('确定删除此片段？')) {
+                if (selectedClip.element) {
+                    selectedClip.element.remove();
+                }
+                videoClips = videoClips.filter(c => c.id !== selectedClip.id);
+                audioClips = audioClips.filter(c => c.id !== selectedClip.id);
+                selectedClip = null;
+            }
+        }
+
+        function addSubtitle() {
+            const text = prompt('输入字幕内容：');
+            if (!text) return;
+            const clip = {
+                id: Date.now(),
+                text: text,
+                startTime: currentTime,
+                duration: 3,
+                element: null
+            };
+            renderSubtitleClip(clip);
+            subtitleClips.push(clip);
+        }
+
+        function renderSubtitleClip(clip) {
+            const trackContent = document.getElementById('subtitleTrackContent');
+            const clipEl = document.createElement('div');
+            clipEl.className = 'subtitle-clip';
+            clipEl.style.left = (clip.startTime * timelineZoom * 10) + 'px';
+            clipEl.style.width = (clip.duration * timelineZoom * 10) + 'px';
+            clipEl.textContent = clip.text;
+            clipEl.onclick = (e) => {
+                e.stopPropagation();
+                selectClip(clip, clipEl);
+            };
+            clip.element = clipEl;
+            trackContent.appendChild(clipEl);
+        }
+
+        function switchTimelineTab(tab, element) {
+            currentTimelineTab = tab;
+            document.querySelectorAll('.timeline-tab').forEach(el => el.classList.remove('active'));
+            element.classList.add('active');
+            
+            document.getElementById('videoTrack').style.display = tab === 'video' ? 'flex' : 'none';
+            document.getElementById('audioTrack').style.display = tab === 'audio' ? 'flex' : 'none';
+            document.getElementById('subtitleTrack').style.display = tab === 'subtitle' ? 'flex' : 'none';
+        }
+
+        function zoomTimeline(delta) {
+            timelineZoom = Math.max(0.5, Math.min(5, timelineZoom + delta * 0.2));
+            // 重新渲染所有片段
+            videoClips.forEach(clip => {
+                if (clip.element) {
+                    clip.element.style.left = (clip.startTime * timelineZoom * 10) + 'px';
+                    clip.element.style.width = (clip.duration * timelineZoom * 10) + 'px';
+                }
+            });
+            audioClips.forEach(clip => {
+                if (clip.element) {
+                    clip.element.style.left = (clip.startTime * timelineZoom * 10) + 'px';
+                    clip.element.style.width = (clip.duration * timelineZoom * 10) + 'px';
+                }
+            });
+            subtitleClips.forEach(clip => {
+                if (clip.element) {
+                    clip.element.style.left = (clip.startTime * timelineZoom * 10) + 'px';
+                    clip.element.style.width = (clip.duration * timelineZoom * 10) + 'px';
+                }
+            });
+            renderTimelineRuler();
+        }
+
+        function toggleEffectsPanel() {
+            const panel = document.getElementById('effectsPanel');
+            const transitionsPanel = document.getElementById('transitionsPanel');
+            panel.classList.toggle('active');
+            transitionsPanel.style.display = 'none';
+        }
+
+        function showTransitions() {
+            const panel = document.getElementById('transitionsPanel');
+            const effectsPanel = document.getElementById('effectsPanel');
+            if (panel.style.display === 'none' || !panel.style.display) {
+                panel.style.display = 'block';
+                panel.classList.add('active');
+                effectsPanel.classList.remove('active');
+            } else {
+                panel.style.display = 'none';
+                panel.classList.remove('active');
+            }
+        }
+
+        function applyEffect(effectType) {
+            if (!selectedClip) {
+                alert('请先选择一个视频片段');
+                return;
+            }
+            selectedClip.effect = effectType;
+            if (selectedClip.element) {
+                selectedClip.element.style.opacity = '0.9';
+                selectedClip.element.title = `特效: ${effectType}`;
+            }
+            alert(`已应用特效：${effectType}`);
+            document.getElementById('effectsPanel').classList.remove('active');
+        }
+
+        function applyTransition(transitionType) {
+            if (videoClips.length < 2) {
+                alert('需要至少两个视频片段才能添加转场');
+                return;
+            }
+            alert(`已添加转场效果：${transitionType}（在片段之间）`);
+            document.getElementById('transitionsPanel').style.display = 'none';
+            document.getElementById('transitionsPanel').classList.remove('active');
+        }
+
+        function exportVideo() {
+            if (videoClips.length === 0) {
+                alert('请先导入视频素材');
+                return;
+            }
+            alert('导出功能：将视频片段合成为最终视频（需要后端支持）');
+        }
+
+        // === 3. AI 生成逻辑 (增强版) ===
+        function switchGenSubMode(subMode) {
+            genSubMode = subMode;
+            document.querySelectorAll('.sub-tab').forEach(el => el.classList.remove('active'));
+            document.getElementById('tab-' + subMode).classList.add('active');
+            const uploadArea = document.getElementById('i2v-upload-area');
+            const prompt = document.getElementById('genPrompt');
+            if (subMode === 'image') {
+                uploadArea.style.display = 'flex';
+                prompt.placeholder = "描述如何让这张图片动起来，例如：镜头缓慢推进，云朵飘动，光线变化...";
+            } else {
+                uploadArea.style.display = 'none';
+                prompt.placeholder = "描述你想要的画面，例如：一只巨大的猫在充满霓虹灯的赛博朋克城市中行走，电影质感，4k，慢动作...";
+            }
+        }
+        
+        document.getElementById('refImageInput').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if(file) {
+                const preview = document.getElementById('refImagePreview');
+                preview.src = URL.createObjectURL(file);
+                preview.style.display = 'block';
+                const icon = e.target.parentElement.querySelector('i');
+                const text = e.target.parentElement.querySelector('span');
+                if (icon) icon.style.display = 'none';
+                if (text) text.style.display = 'none';
+            }
+        });
+
+        function startGeneration() {
+            const prompt = document.getElementById('genPrompt').value.trim();
+            if (!prompt) {
+                alert('请输入创意提示词');
+                return;
+            }
+            
+            const engine = document.getElementById('modelEngine').value;
+            const aspectRatio = document.querySelector('#rightPanel select').value;
+            
+            // 显示进度
+            document.getElementById('progressContainer').classList.add('active');
+            document.getElementById('generatedPreview').style.display = 'none';
+            
+            // 模拟生成过程
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += Math.random() * 15;
+                if (progress >= 100) {
+                    progress = 100;
+                    clearInterval(interval);
+                    onGenerationComplete();
+                }
+                document.getElementById('progressBarFill').style.width = progress + '%';
+                document.getElementById('progressText').textContent = getProgressText(progress);
+            }, 500);
+            
+            currentGeneration = {
+                prompt: prompt,
+                engine: engine,
+                aspectRatio: aspectRatio,
+                progress: progress
+            };
+        }
+
+        function getProgressText(progress) {
+            if (progress < 20) return '正在分析提示词...';
+            if (progress < 40) return '正在生成关键帧...';
+            if (progress < 60) return '正在渲染视频...';
+            if (progress < 80) return '正在优化细节...';
+            if (progress < 100) return '即将完成...';
+            return '生成完成！';
+        }
+
+        function onGenerationComplete() {
+            document.getElementById('progressText').textContent = '生成完成！';
+            document.getElementById('generatedPreview').style.display = 'block';
+            
+            // 模拟生成的视频（实际应该从后端获取）
+            const video = document.getElementById('generatedVideo');
+            video.src = 'https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_1mb.mp4';
+            
+            // 添加到历史记录
+            addToHistory({
+                prompt: currentGeneration.prompt,
+                engine: currentGeneration.engine,
+                date: new Date().toLocaleString('zh-CN'),
+                thumbnail: 'https://via.placeholder.com/320x180/0A84FF/fff?text=Generated'
+            });
+        }
+
+        function addToHistory(item) {
+            generationHistory.unshift(item);
+            const historyList = document.getElementById('historyList');
+            const historyItem = document.createElement('div');
+            historyItem.className = 'history-item';
+            historyItem.onclick = () => loadHistory(item);
+            historyItem.innerHTML = `
+                <div class="history-thumb">
+                    <img src="${item.thumbnail}" alt="历史记录">
+                </div>
+                <div class="history-info">
+                    <div style="color: white; margin-bottom: 4px;">${item.prompt.substring(0, 20)}...</div>
+                    <div>${item.date}</div>
+                </div>
+            `;
+            historyList.insertBefore(historyItem, historyList.firstChild);
+        }
+
+        function loadHistory(item) {
+            document.getElementById('genPrompt').value = item.prompt;
+            document.getElementById('modelEngine').value = item.engine;
+            alert('已加载历史记录');
+        }
+
+        function downloadGenerated() {
+            const video = document.getElementById('generatedVideo');
+            if (!video.src) {
+                alert('没有可下载的视频');
+                return;
+            }
+            const a = document.createElement('a');
+            a.href = video.src;
+            a.download = 'generated-video.mp4';
+            a.click();
+        }
+
+        function importToEditor() {
+            if (currentMode !== 'editor') {
+                switchMode('editor');
+                setTimeout(() => {
+                    const video = document.getElementById('generatedVideo');
+                    if (video.src) {
+                        // 将生成的视频添加到编辑器
+                        const file = new File([], 'generated-video.mp4', { type: 'video/mp4' });
+                        addVideoClip(file);
+                    }
+                }, 300);
+            } else {
+                const video = document.getElementById('generatedVideo');
+                if (video.src) {
+                    const file = new File([], 'generated-video.mp4', { type: 'video/mp4' });
+                    addVideoClip(file);
+                }
+            }
+        }
+
+        // 拖放功能
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.currentTarget.style.borderColor = 'var(--accent)';
+            e.currentTarget.style.background = 'rgba(10, 132, 255, 0.1)';
+        }
+
+        function handleDragLeave(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.currentTarget.style.borderColor = '';
+            e.currentTarget.style.background = '';
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.currentTarget.style.borderColor = '';
+            e.currentTarget.style.background = '';
+            
+            const files = Array.from(e.dataTransfer.files);
+            files.forEach(file => {
+                if (file.type.startsWith('video/')) {
+                    addVideoClip(file);
+                } else if (file.type.startsWith('audio/')) {
+                    addAudioClip(file);
+                } else if (file.type.startsWith('image/') && currentMode === 'gen') {
+                    const input = document.getElementById('refImageInput');
+                    const dataTransfer = new DataTransfer();
+                    dataTransfer.items.add(file);
+                    input.files = dataTransfer.files;
+                    const event = new Event('change', { bubbles: true });
+                    input.dispatchEvent(event);
+                }
+            });
+        }
+
+        function handleVideoDrop(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const files = Array.from(e.dataTransfer.files);
+            files.forEach(file => {
+                if (file.type.startsWith('video/')) {
+                    addVideoClip(file);
+                } else if (file.type.startsWith('audio/')) {
+                    addAudioClip(file);
+                }
+            });
+        }
+
+        // === 4. Three.js 核心逻辑 ===
+        function initThreeJS() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            const grid = new THREE.GridHelper(20, 20, 0x444444, 0x222222);
+            scene.add(grid);
+            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.set(3, 2, 5);
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+            gltfLoader = new THREE.GLTFLoader();
+            
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+            dirLight.position.set(5, 5, 5);
+            scene.add(dirLight);
+
+            createGeometry('box');
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true; controls.autoRotate = true; controls.autoRotateSpeed = 1.5;
+            
+            function animate() {
+                requestAnimationFrame(animate);
+                controls.update();
+                renderer.render(scene, camera);
+            }
+            animate();
+            window.addEventListener('resize', resizeCanvas);
+        }
+
+        function createGeometry(type) {
+            currentShape = type;
+            if (textureMesh) {
+                scene.remove(textureMesh);
+                textureMesh = null;
+            }
+
+            // 自定义模型单独处理
+            if (type === 'custom') {
+                document.getElementById('modelInput').click();
+                return;
+            }
+
+            let geometry;
+            if (type === 'box') {
+                geometry = new THREE.BoxGeometry(1.5, 2, 1.5);
+            } else if (type === 'cylinder') {
+                geometry = new THREE.CylinderGeometry(0.8, 0.8, 2, 64);
+            } else {
+                geometry = new THREE.BoxGeometry(1.5, 2, 1.5);
+            }
+
+            const material = new THREE.MeshStandardMaterial({ 
+                color: 0xffffff, map: activeTexture, roughness: 0.3, metalness: 0.1, side: THREE.DoubleSide
+            });
+            textureMesh = new THREE.Mesh(geometry, material);
+            textureMesh.position.y = 1.01;
+            scene.add(textureMesh);
+        }
+
+        function applyTextureToMesh(mesh, texture) {
+            if (!mesh || !texture) return;
+            if (mesh.traverse) {
+                mesh.traverse(child => {
+                    if (child.isMesh) {
+                        child.material.map = texture;
+                        child.material.needsUpdate = true;
+                        if (child.material.color) child.material.color.set(0xffffff);
+                    }
+                });
+            } else if (mesh.material) {
+                mesh.material.map = texture;
+                mesh.material.needsUpdate = true;
+                if (mesh.material.color) mesh.material.color.set(0xffffff);
+            }
+        }
+
+        function loadCustomModel(file) {
+            if (!file || !gltfLoader) return;
+            const url = URL.createObjectURL(file);
+            gltfLoader.load(url, (gltf) => {
+                if (textureMesh) {
+                    scene.remove(textureMesh);
+                    textureMesh = null;
+                }
+                textureMesh = gltf.scene;
+                textureMesh.position.y = 1;
+                textureMesh.scale.set(1.2, 1.2, 1.2);
+                if (activeTexture) applyTextureToMesh(textureMesh, activeTexture);
+                scene.add(textureMesh);
+            }, undefined, (err) => {
+                console.error(err);
+                alert('模型加载失败，请确认文件格式 (.glb/.gltf)');
+            });
+        }
+
+        function switchShape(type, btn) {
+            document.querySelectorAll('.shape-option').forEach(el => el.classList.remove('active'));
+            btn.classList.add('active');
+            createGeometry(type);
+        }
+
+        document.getElementById('textureInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                new THREE.TextureLoader().load(event.target.result, function(texture) {
+                    activeTexture = texture;
+                    texture.encoding = THREE.sRGBEncoding;
+                    if (textureMesh) applyTextureToMesh(textureMesh, texture);
+                    alert("✅ 贴图已应用！");
+                });
+            };
+            reader.readAsDataURL(file);
+        });
+
+        document.getElementById('modelInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            loadCustomModel(file);
+        });
+
+        // 音量控制
+        document.getElementById('volumeSlider')?.addEventListener('input', (e) => {
+            const value = e.target.value;
+            document.getElementById('volumeValue').textContent = value + '%';
+            if (selectedClip && selectedClip.element && selectedClip.element.classList.contains('audio-clip')) {
+                // 实际应用中需要更新音频音量
+            }
+        });
+
+        initThreeJS();
+    </script>
+</body>
+</html>
